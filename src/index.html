@@ -12,33 +12,117 @@
         body {
             margin: 0;
             padding: 0;
-            overflow: hidden;
+            overflow: auto;
         }
 
-        #player-container {
-            width: 100vw;
-            height: 100vh;
+        #save-btn {
+            position: fixed;
+            margin-left: 10px;
+            margin-top: 10px;
+            padding: 5px;
         }
     </style>
 </head>
 
 <body>
 
+    <button id="save-btn">Save as PNG</button>
     <div id="player-container"></div>
 
     <script>
         new spine.SpinePlayer("player-container", {
-            skelUrl: "c_luosela_01.skel",
-            atlasUrl: "c_luosela_01.atlas",
+            skelUrl: "c_xuanling1.skel",
+            atlasUrl: "c_xuanling1.atlas",
             premultipliedAlpha: false,
-            showControls: false,
+            showControls: true,
             alpha: true,
+            backgroundColor: "#00000000",
+            preserveDrawingBuffer: true,
+            viewport: {
+                pad: 0
+            },
             success: function (player) {
+                // Adjust container aspect ratio to match skeleton setup bounds
+                let skelWidth = player.skeleton.data.width;
+                let skelHeight = player.skeleton.data.height;
+                let container = document.getElementById("player-container");
+                container.style.height = (container.clientWidth * (skelHeight / skelWidth)) + "px";
+
+                // Force player to update layout after resizing
+                window.dispatchEvent(new Event("resize"));
+
                 let animations = player.skeleton.data.animations;
                 let defaultAnim = animations[0].name;
                 player.setAnimation(defaultAnim, true);
-                player.play();
+                // player.play();
             }
+        });
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            const canvas = document.querySelector('canvas');
+            if (!canvas) {
+                alert('Canvas not found!');
+                return;
+            }
+
+            // Draw to a 2D offscreen canvas so we can read the pixel data
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = canvas.width;
+            offscreenCanvas.height = canvas.height;
+            const offCtx = offscreenCanvas.getContext('2d');
+            offCtx.drawImage(canvas, 0, 0);
+
+            // Get pixel data to find the tight bounding box
+            const imageData = offCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+            const data = imageData.data;
+
+            let minX = offscreenCanvas.width, minY = offscreenCanvas.height, maxX = 0, maxY = 0;
+            let hasVisiblePixels = false;
+
+            for (let y = 0; y < offscreenCanvas.height; y++) {
+                for (let x = 0; x < offscreenCanvas.width; x++) {
+                    const alpha = data[(y * offscreenCanvas.width + x) * 4 + 3];
+                    if (alpha > 0) { // non-transparent pixel
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        hasVisiblePixels = true;
+                    }
+                }
+            }
+
+            if (!hasVisiblePixels) {
+                alert('No visible pixels found to save!');
+                return;
+            }
+
+            const cropWidth = maxX - minX + 1;
+            const cropHeight = maxY - minY + 1;
+
+            // Crop the image to the exact bounding box
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropWidth;
+            croppedCanvas.height = cropHeight;
+            const croppedCtx = croppedCanvas.getContext('2d');
+            croppedCtx.drawImage(offscreenCanvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+            // Scale the tightly cropped image to 2048px width
+            const targetWidth = 2048;
+            const scale = targetWidth / cropWidth;
+            const targetHeight = cropHeight * scale;
+
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = targetWidth;
+            finalCanvas.height = targetHeight;
+            const finalCtx = finalCanvas.getContext('2d');
+            finalCtx.drawImage(croppedCanvas, 0, 0, targetWidth, targetHeight);
+
+            const dataURL = finalCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'spine-frame.png';
+            link.href = dataURL;
+            link.click();
         });
     </script>
 
