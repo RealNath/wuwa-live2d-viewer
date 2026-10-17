@@ -5,31 +5,47 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 DATA_DIR = SCRIPT_DIR.parent / 'data'
 
-if len(sys.argv) == 2:
-    if sys.argv[1].endswith('.json'): JSON_NAME = sys.argv[1][:-5]
-    else: JSON_NAME = sys.argv[1]
-    
-    if not (DATA_DIR / f'{JSON_NAME}.json').exists():
-        raise FileNotFoundError(f"File '{JSON_NAME}.json' not found in the data directory.")
-else:
-    print("Use `python extract.py <JSON_NAME>` (just directly mention the json file name, no need for paths).")
+if len(sys.argv) != 2:
+    print("Use `python extract.py <JSON_NAME>`")
     sys.exit(1)
 
+input_arg = Path(sys.argv[1])
+base_name = input_arg.with_suffix('') if input_arg.suffix == '.json' else input_arg
 
-with open(DATA_DIR / f'{JSON_NAME}.json', 'r', encoding='utf-8') as f:
+if input_arg.is_file():
+    json_path = input_arg
+    output_base = base_name
+elif (DATA_DIR / f'{base_name}.json').is_file():
+    json_path = DATA_DIR / f'{base_name}.json'
+    output_base = DATA_DIR / base_name
+elif (DATA_DIR / input_arg).is_file():
+    json_path = DATA_DIR / input_arg
+    output_base = DATA_DIR / base_name
+else:
+    raise FileNotFoundError(f"File '{sys.argv[1]}' not found in data directory or path.")
+
+with open(json_path, 'r', encoding='utf-8') as f:
     data = json.load(f)
 
-# 1. Extract .atlas file
-# First object contains the atlas text
-atlas_raw = data[0]['Properties']['rawData']
-with open(DATA_DIR / f'{JSON_NAME}.atlas', 'w', encoding='utf-8') as f:
-    # If the JSON parsed the literal '\n' string, replace it with actual newlines
-    f.write(atlas_raw.replace('\\n', '\n'))
+# Convert single JSON object (if not a list) to list of objects
+if isinstance(data, dict): data = [data]
 
-# 2. Extract .skel binary file
-# Second object contains the skeleton byte array
-skel_raw = data[1]['Properties']['rawData']
-with open(DATA_DIR / f'{JSON_NAME}.skel', 'wb') as f:
-    f.write(bytearray(skel_raw))
+extracted = []
+for item in data:
+    item_type = item.get('Type')
+    raw_data = item.get('Properties', {}).get('rawData')
 
-print("Extraction complete.")
+    if item_type == 'SpineAtlasAsset' or (isinstance(raw_data, str) and not item_type):
+        atlas_path = output_base.with_suffix('.atlas')
+        with open(atlas_path, 'w', encoding='utf-8') as f:
+            f.write(raw_data.replace('\\n', '\n'))
+        extracted.append(atlas_path.name)
+
+    elif item_type == 'SpineSkeletonDataAsset' or (isinstance(raw_data, list) and not item_type):
+        skel_path = output_base.with_suffix('.skel')
+        with open(skel_path, 'wb') as f:
+            f.write(bytearray(raw_data))
+        extracted.append(skel_path.name)
+
+if extracted: print(f"Extraction complete: {', '.join(extracted)}")
+else: print("No Spine atlas or skeleton data found to extract.")
