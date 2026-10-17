@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 if args.file:
     file_path = Path(args.file).with_suffix('.json')
-    files = [file_path] if file_path.is_file() else [DATA_DIR / file_path.name]
+    files = [file_path] if file_path.is_file() else [DATA_DIR / file_path]
 else:
     files = Path(args.all_files).rglob('*.json')
 
